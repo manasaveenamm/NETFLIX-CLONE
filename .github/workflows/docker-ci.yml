@@ -10,13 +10,11 @@ permissions:
   contents: read
 
 jobs:
-
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -40,14 +38,16 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: ./netflix
-           deploy-to-ec2:
+          push: true
+          tags: manasa6754/netflix-frontend:latest
+
+  deploy-to-ec2:
     name: Deploy to AWS EC2
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
       - name: Prepare SSH key
-        shell: bash
         env:
           SSH_KEY_B64: ${{ secrets.EC2_SSH_KEY }}
         run: |
@@ -55,7 +55,6 @@ jobs:
           chmod 600 "$HOME/netflix_github_actions"
 
       - name: Test SSH connection
-        shell: bash
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
@@ -68,7 +67,6 @@ jobs:
             "echo SSH connection successful"
 
       - name: Deploy application
-        shell: bash
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
@@ -77,7 +75,7 @@ jobs:
             -i "$HOME/netflix_github_actions" \
             -o StrictHostKeyChecking=no \
             "$EC2_USERNAME@$EC2_HOST" << 'EOF'
-
+            
           set -e
 
           echo "Connected to EC2"
@@ -85,10 +83,10 @@ jobs:
           docker network inspect netflix-network >/dev/null 2>&1 || \
             docker network create netflix-network
 
-          echo "Pulling backend..."
+          echo "Pulling backend image..."
           docker pull manasa6754/netflix-clone:latest
 
-          echo "Pulling frontend..."
+          echo "Pulling frontend image..."
           docker pull manasa6754/netflix-frontend:latest
 
           echo "Removing old containers..."
@@ -113,9 +111,4 @@ jobs:
           echo "Deployment completed"
 
           docker ps
-
-          EOF push: true
-          tags: manasa6754/netflix-frontend:latest
-
-
- 
+          EOF
