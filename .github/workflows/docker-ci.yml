@@ -10,11 +10,13 @@ permissions:
   contents: read
 
 jobs:
+
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -41,30 +43,57 @@ jobs:
           push: true
           tags: manasa6754/netflix-frontend:latest
 
+
   deploy-to-ec2:
     name: Deploy to AWS EC2
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Prepare SSH key
         env:
           SSH_KEY_B64: ${{ secrets.EC2_SSH_KEY }}
         run: |
+          if [ -z "$SSH_KEY_B64" ]; then
+            echo "ERROR: EC2_SSH_KEY secret is empty or unavailable"
+            exit 1
+          fi
+
           echo "$SSH_KEY_B64" | base64 --decode > "$HOME/netflix_github_actions"
+
           chmod 600 "$HOME/netflix_github_actions"
+
+          echo "SSH key prepared"
+
 
       - name: Test SSH connection
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
         run: |
+          echo "Checking EC2 connection variables..."
+
+          if [ -z "$EC2_HOST" ]; then
+            echo "ERROR: EC2_HOST secret is empty or unavailable"
+            exit 1
+          fi
+
+          if [ -z "$EC2_USERNAME" ]; then
+            echo "ERROR: EC2_USERNAME secret is empty or unavailable"
+            exit 1
+          fi
+
+          echo "EC2_HOST is configured"
+          echo "EC2_USERNAME is configured"
+
           ssh \
             -i "$HOME/netflix_github_actions" \
             -o StrictHostKeyChecking=no \
             -o BatchMode=yes \
             "$EC2_USERNAME@$EC2_HOST" \
             "echo SSH connection successful"
+
 
       - name: Deploy application
         env:
@@ -75,24 +104,30 @@ jobs:
             -i "$HOME/netflix_github_actions" \
             -o StrictHostKeyChecking=no \
             "$EC2_USERNAME@$EC2_HOST" << 'EOF'
-            
+
           set -e
 
           echo "Connected to EC2"
 
+          echo "Checking Docker network..."
+
           docker network inspect netflix-network >/dev/null 2>&1 || \
             docker network create netflix-network
 
-          echo "Pulling backend image..."
+          echo "Pulling latest backend image..."
+
           docker pull manasa6754/netflix-clone:latest
 
-          echo "Pulling frontend image..."
+          echo "Pulling latest frontend image..."
+
           docker pull manasa6754/netflix-frontend:latest
 
           echo "Removing old containers..."
+
           docker rm -f netflix-frontend netflix-backend || true
 
           echo "Starting backend..."
+
           docker run -d \
             --name netflix-backend \
             --restart unless-stopped \
@@ -101,6 +136,7 @@ jobs:
             manasa6754/netflix-clone:latest
 
           echo "Starting frontend..."
+
           docker run -d \
             --name netflix-frontend \
             --restart unless-stopped \
@@ -108,7 +144,10 @@ jobs:
             -p 80:80 \
             manasa6754/netflix-frontend:latest
 
-          echo "Deployment completed"
+          echo "Deployment completed successfully"
+
+          echo "Running containers:"
 
           docker ps
+
           EOF
