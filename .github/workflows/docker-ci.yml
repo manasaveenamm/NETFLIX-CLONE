@@ -41,3 +41,44 @@ jobs:
           context: ./netflix
           push: true
           tags: manasa6754/netflix-frontend:latest
+  
+  deploy-to-ec2:
+    name: Deploy to AWS EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/netflix-app/netflix2.0
+
+            docker network inspect netflix-network >/dev/null 2>&1 || docker network create netflix-network
+
+            docker pull manasa6754/netflix-clone:latest
+            docker pull manasa6754/netflix-frontend:latest
+
+            docker rm -f netflix-frontend netflix-backend || true
+
+            docker run -d \
+              --name netflix-backend \
+              --restart unless-stopped \
+              --network netflix-network \
+              --env-file /home/ubuntu/netflix-app/netflix2.0/.env \
+              manasa6754/netflix-clone:latest
+
+            docker run -d \
+              --name netflix-frontend \
+              --restart unless-stopped \
+              --network netflix-network \
+              -p 80:80 \
+              manasa6754/netflix-frontend:latest
+
+            docker ps
+ 
+  
